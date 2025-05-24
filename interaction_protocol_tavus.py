@@ -11,6 +11,10 @@ from daily import CallClient, Daily, EventHandler, VirtualMicrophoneDevice
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 import re
+from flask import Flask, Response, stream_with_context
+from flask_cors import CORS
+from queue import Queue
+from threading import Thread
 
 # # model_name = "deepseek-ai/deepseek-math-7b-instruct"
 # model_name = "/home/ubuntu/karthik-ragunath-ananda-kumar-utah/deepseek-checkpoints/deepseek-math-7b-rl"
@@ -32,6 +36,48 @@ warm_boot_time = None
 questions_seen = {}
 # global_lock = False
 
+# --- Added for SSE ---
+utterance_queue = Queue()
+app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
+
+@app.route('/listen-utterances')
+def listen_utterances():
+    def event_stream():
+        while True:
+            try:
+                # Wait for a new utterance from the queue
+                utterance = utterance_queue.get()
+                print(f"DEBUG: Got utterance from queue: {utterance}")
+                
+                if utterance is None:  # Allow graceful shutdown if needed
+                    print("DEBUG: Received None utterance, breaking stream")
+                    break
+                
+                # Format the SSE message - note the actual newlines, not escaped
+                message = f"data: {json.dumps(utterance)}\n\n"
+                print(f"DEBUG: Sending SSE message: {repr(message)}")  # repr shows exact string content
+                
+                yield message
+                print("DEBUG: Message yielded successfully")
+                
+                utterance_queue.task_done()
+            except Exception as e:
+                print(f"ERROR in event_stream: {str(e)}")
+                continue
+    
+    # Set required SSE headers
+    response = Response(
+        stream_with_context(event_stream()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'  # Disable proxy buffering
+        }
+    )
+    return response
+
 class TestType(Enum):
     FULL = "full"
     # ECHO = "echo"
@@ -43,7 +89,6 @@ class RoomHandler(EventHandler):
 
     def on_app_message(self, message, sender: str) -> None:
         global client_global, conversation_id_global, conversation_url_global
-        # print(f"Incoming app message from {sender}: {message}")
         try:
             if isinstance(message, str):
                 json_message = json.loads(message)
@@ -51,47 +96,19 @@ class RoomHandler(EventHandler):
                 json_message = message
         except Exception as e:
             print(f"Error parsing message: {e}")
-        # if json_message["event_type"] == "conversation.utterance":
-        #     print(f"Utterance: {json_message['properties']['speech']}")
-        # if json_message["event_type"] == "conversation.perception_tool_call":
-        #     print(f"Perception tool call: {json_message.keys()}")
-        #     print("Property Keys: ", json_message["properties"].keys())
-        #     print("Arguments: ", json_message["properties"]["arguments"])
-        #     print("Name: ", json_message["properties"]["name"])
-        #     if json_message["properties"]["name"] == "notify_if_math_problem_found":
-        #         question = json_message["properties"]["arguments"]["question"]
-        #         parsed_question = question.split("=")[0].strip()
-        #         if parsed_question not in questions_seen:
-        #             questions_seen[parsed_question] = True
-        #             send_text_echo(
-        #                 client_global,
-        #                 conversation_id_global,
-        #                 "oh interesting problem, let me think about it for a moment",
-        #             )
-        #             time.sleep(3)
-        #             result = call_deepseek_llm(parsed_question)
-        #             # 5-10s of thinking
-        #             send_text_echo(
-        #                 client_global,
-        #                 conversation_id_global,
-        #                 f"i think i got it, here's how i got to the answer: {result}",
-        #             )
-        #     elif json_message["properties"]["name"] == "notify_if_cat_seen":
-        #         send_text_echo(
-        #             client_global, conversation_id_global, "oh no a cat! i'm scared"
-        #         )
-        #     elif json_message["properties"]["name"] == "notify_if_dog_seen":
-        #         send_text_echo(
-        #             client_global, conversation_id_global, "oh no a dog! i'm scared"
-        #         )
-        if (
-            json_message["event_type"] == "conversation.utterance"
-            and json_message["properties"]["role"] == "replica"
-        ):
-            global assistant_utterance, assistant_utterance_time
-            assistant_utterance = json_message["properties"]["speech"]
-            assistant_utterance_time = time.time()
-            print(f"Assistant utterance: {assistant_utterance}")
+            return
+
+        if json_message["event_type"] == "conversation.utterance":
+            utterance_text = json_message['properties']['speech']
+            role_text = json_message["properties"]["role"]
+            print(f"DEBUG: Received utterance - Text: {utterance_text}, Role: {role_text}")
+            
+            if role_text == "replica":  # Capture speech from user/others
+                print(f"DEBUG: Queueing utterance from {role_text}")
+                utterance_queue.put(utterance_text)
+                print(f"DEBUG: Successfully queued utterance")
+            else:
+                print(f"DEBUG: Skipping replica utterance")
         elif json_message["event_type"] == "system.replica_joined":
             global gpu_joined, warm_boot_time
             gpu_joined = True
@@ -333,6 +350,15 @@ def main():
         "--conversation_url", type=str, required=True, help="Conversation URL"
     )
     args = parser.parse_args()
+
+    # --- Added for SSE ---
+    # Start Flask server in a background thread
+    # Use port 5001 as configured in index.html
+    flask_thread = Thread(target=lambda: app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False), daemon=True)
+    flask_thread.start()
+    print("Flask SSE server started on port 5001")
+    # --- End SSE Additions ---
+
     run_heartbeat(args.conversation_url, args.conversation_id)
 
 
