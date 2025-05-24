@@ -51,8 +51,8 @@ class RoomHandler(EventHandler):
                 json_message = message
         except Exception as e:
             print(f"Error parsing message: {e}")
-        if json_message["event_type"] == "conversation.utterance":
-            print(f"Utterance: {json_message['properties']['speech']}")
+        # if json_message["event_type"] == "conversation.utterance":
+        #     print(f"Utterance: {json_message['properties']['speech']}")
         # if json_message["event_type"] == "conversation.perception_tool_call":
         #     print(f"Perception tool call: {json_message.keys()}")
         #     print("Property Keys: ", json_message["properties"].keys())
@@ -84,13 +84,14 @@ class RoomHandler(EventHandler):
         #         send_text_echo(
         #             client_global, conversation_id_global, "oh no a dog! i'm scared"
         #         )
-        elif (
+        if (
             json_message["event_type"] == "conversation.utterance"
             and json_message["properties"]["role"] == "replica"
         ):
             global assistant_utterance, assistant_utterance_time
             assistant_utterance = json_message["properties"]["speech"]
             assistant_utterance_time = time.time()
+            print(f"Assistant utterance: {assistant_utterance}")
         elif json_message["event_type"] == "system.replica_joined":
             global gpu_joined, warm_boot_time
             gpu_joined = True
