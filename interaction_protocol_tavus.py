@@ -48,17 +48,53 @@ CORS(app)  # Enable CORS for all routes
 
 def get_claude_response(utterance: str) -> str:
     """Get a response from Claude for the given utterance."""
+    topic = "Ordering food at a restaurant"
+    client = anthropic.Anthropic()
+
     try:
-        message = anthropic.messages.create(
+        message = client.messages.create(
             model="claude-3-opus-20240229",
             max_tokens=1024,
             temperature=0.7,
-            system="You are not an AI. You are a reflection of me, Karthik. So answer on behalf of me. Keep your responses natural, concise, and engaging.",
+            system=f"Act as a patient and encouraging Spanish language tutor. Engage in a conversation with me, correcting my grammar and vocabulary as needed. " \
+                   f"Respond to my messages in Spanish, and provide English translations or explanations when necessary to help me understand. Our conversation topic is {topic}.",
             messages=[
                 {"role": "user", "content": utterance}
+            ],
+            tools=[
+                {
+                    "type": "function",
+                    "name": "generate_response",
+                    "description": "Generate a response in Spanish with an English translation",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "spanish_response": {
+                                "type": "string",
+                                "description": "The response in Spanish"
+                            },
+                            "english_translation": {
+                                "type": "string",
+                                "description": "The English translation of the response"
+                            }
+                        },
+                        "required": ["spanish_response", "english_translation"]
+                    }
+                }
             ]
         )
-        return message.content[0].text
+        # Check if Claude used the tool
+        if message.content[0].type == "tool_use":
+            tool_use = message.content[0]
+            if tool_use.name == "generate_response":
+                # Extract the Spanish response and English translation
+                spanish_response = tool_use.parameters["spanish_response"]
+                english_translation = tool_use.parameters["english_translation"]
+                return f"Spanish: {spanish_response}, English: {english_translation}"
+        else:
+            # Handle the case where Claude didn't use the tool
+            return message.content[0].text
+
     except Exception as e:
         print(f"Error getting Claude response: {e}")
         return f"I apologize, but I encountered an error processing your message: {str(e)}"
