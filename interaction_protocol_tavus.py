@@ -166,6 +166,7 @@ def get_claude_response(utterance: str, topic: str, source_lang: str, target_lan
 @app.route('/listen-utterances')
 def listen_utterances():
     # Get conversation settings from query parameters
+    print(f"DEBUG: Received request with query parameters: {request.args}")
     topic = request.args.get('topic', 'restaurant')
     source_lang = request.args.get('source_lang', 'english')
     target_lang = request.args.get('target_lang', 'spanish')

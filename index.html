@@ -237,7 +237,7 @@
                 Duolingo-V2
                 <small>AI-Powered Language Learning Platform</small>
             </div>
-            <iframe src="https://tavus.daily.co/c8af2ba47059" title="Video Call" allow="camera; microphone"></iframe>
+            <iframe src="https://tavus.daily.co/c1fa2f468e6e" title="Video Call" allow="camera; microphone"></iframe>
         </div>
         <div id="right-pane">
             <div class="header">
@@ -290,6 +290,19 @@
             return messageDiv;
         }
         
+        // Settings handling
+        const topicSelect = document.getElementById('topic');
+        const sourceLangSelect = document.getElementById('source-lang');
+        const targetLangSelect = document.getElementById('target-lang');
+
+        // Store current settings and EventSource
+        let currentSettings = {
+            topic: topicSelect.value,
+            sourceLang: sourceLangSelect.value,
+            targetLang: targetLangSelect.value
+        };
+        let currentEventSource = null;
+
         function setupEventSource() {
             console.log("Setting up EventSource...");
             const params = new URLSearchParams({
@@ -297,22 +310,31 @@
                 source_lang: currentSettings.sourceLang,
                 target_lang: currentSettings.targetLang
             });
-            const eventSource = new EventSource(`http://localhost:5001/listen-utterances?${params.toString()}`);
+            console.log("Connecting with params:", params.toString());
+            
+            // Close existing connection if any
+            if (currentEventSource) {
+                console.log("Closing existing EventSource connection");
+                currentEventSource.close();
+            }
+
+            currentEventSource = new EventSource(`http://localhost:5001/listen-utterances?${params.toString()}`);
             
             statusIndicator.classList.add('connecting');
             statusMessage.style.display = 'block';
             statusMessage.textContent = 'Connecting to conversation...';
 
-            eventSource.addEventListener('open', function(event) {
-                console.log("Connection established");
+            currentEventSource.addEventListener('open', function(event) {
+                console.log("Connection established with readyState:", currentEventSource.readyState);
                 statusIndicator.classList.remove('connecting');
                 statusMessage.style.display = 'none';
             });
 
-            eventSource.addEventListener('message', function(event) {
+            currentEventSource.addEventListener('message', function(event) {
+                console.log("Message received:", event.data);
                 try {
                     const message = JSON.parse(event.data);
-                    console.log("Received message:", message);
+                    console.log("Parsed message:", message);
                     
                     if (message.type === 'user_utterance') {
                         // Handle user utterance (avatar's speech)
@@ -361,35 +383,23 @@
                 }
             });
 
-            eventSource.addEventListener('error', function(event) {
+            currentEventSource.addEventListener('error', function(event) {
                 console.error("Connection error:", event);
                 statusIndicator.classList.add('connecting');
                 statusMessage.style.display = 'block';
                 statusMessage.textContent = 'Connection lost. Reconnecting...';
+                
+                // Attempt to reconnect after a delay
+                setTimeout(() => {
+                    if (currentEventSource.readyState === EventSource.CLOSED) {
+                        console.log("Attempting to reconnect...");
+                        setupEventSource();
+                    }
+                }, 2000);
             });
 
-            return eventSource;
+            return currentEventSource;
         }
-
-        const eventSource = setupEventSource();
-
-        window.addEventListener('beforeunload', () => {
-            if (eventSource) {
-                eventSource.close();
-            }
-        });
-
-        // Settings handling
-        const topicSelect = document.getElementById('topic');
-        const sourceLangSelect = document.getElementById('source-lang');
-        const targetLangSelect = document.getElementById('target-lang');
-
-        // Store current settings
-        let currentSettings = {
-            topic: topicSelect.value,
-            sourceLang: sourceLangSelect.value,
-            targetLang: targetLangSelect.value
-        };
 
         // Function to update settings
         function updateSettings() {
@@ -401,12 +411,8 @@
 
             // Check if settings have changed
             if (JSON.stringify(newSettings) !== JSON.stringify(currentSettings)) {
+                console.log("Settings changed from", currentSettings, "to", newSettings);
                 currentSettings = newSettings;
-                
-                // Close existing EventSource connection
-                if (eventSource) {
-                    eventSource.close();
-                }
 
                 // Update status
                 statusIndicator.classList.add('connecting');
@@ -416,7 +422,7 @@
                 // Clear existing messages
                 utterancesDiv.innerHTML = '';
 
-                // Reconnect with new settings
+                // Setup new EventSource connection
                 setupEventSource();
             }
         }
@@ -425,6 +431,17 @@
         topicSelect.addEventListener('change', updateSettings);
         sourceLangSelect.addEventListener('change', updateSettings);
         targetLangSelect.addEventListener('change', updateSettings);
+
+        // Initial setup
+        currentEventSource = setupEventSource();
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (currentEventSource) {
+                console.log("Closing EventSource connection on unload");
+                currentEventSource.close();
+            }
+        });
     </script>
 </body>
 </html>
