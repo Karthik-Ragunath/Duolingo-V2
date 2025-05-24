@@ -49,7 +49,7 @@ CORS(app)  # Enable CORS for all routes
 def get_claude_response(utterance: str) -> str:
     """Get a response from Claude for the given utterance."""
     topic = "Ordering food at a restaurant"
-    client = anthropic.Anthropic()
+    client = Anthropic()
 
     try:
         message = client.messages.create(
