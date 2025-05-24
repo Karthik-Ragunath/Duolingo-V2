@@ -61,6 +61,29 @@
             border-color: #00a884;
         }
 
+        #create-conversation-btn {
+            margin-top: 10px;
+            padding: 12px 20px;
+            background: #00a884;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            width: 100%;
+        }
+
+        #create-conversation-btn:hover {
+            background: #008f72;
+        }
+
+        #create-conversation-btn:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
         #left-pane { 
             flex: 1.2;
             display: flex;
@@ -231,6 +254,7 @@
                     <option value="french">French</option>
                 </select>
             </div>
+            <button id="create-conversation-btn">Create New Conversation</button>
         </div>
         <div id="left-pane">
             <div class="header">
@@ -401,6 +425,90 @@
             return currentEventSource;
         }
 
+        async function createNewConversation() {
+            const button = document.getElementById('create-conversation-btn');
+            button.disabled = true;
+            
+            // Update status
+            statusIndicator.classList.add('connecting');
+            statusMessage.style.display = 'block';
+            statusMessage.textContent = 'Creating new conversation...';
+
+            try {
+                // Create new conversation based on target language and topic
+                const response = await fetch('http://localhost:5001/create-conversation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        language: currentSettings.targetLang,
+                        topic: currentSettings.topic
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to create conversation');
+                }
+
+                const data = await response.json();
+                console.log("New conversation created:", data);
+
+                if (data.conversation_url) {
+                    // Update the iframe source with the new conversation URL
+                    const iframe = document.querySelector('iframe');
+                    iframe.src = data.conversation_url;
+                    console.log("Updated iframe URL to:", data.conversation_url);
+                    
+                    // Store current settings and URL in the settings pane data attributes
+                    const settingsPane = document.getElementById('settings-pane');
+                    settingsPane.dataset.currentUrl = data.conversation_url;
+                    settingsPane.dataset.currentTopic = currentSettings.topic;
+                    settingsPane.dataset.sourceLang = currentSettings.sourceLang;
+                    settingsPane.dataset.targetLang = currentSettings.targetLang;
+
+                    // Notify the backend about the new conversation
+                    try {
+                        const updateResponse = await fetch('http://localhost:5001/update-conversation', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                conversation_url: data.conversation_url
+                            })
+                        });
+
+                        if (!updateResponse.ok) {
+                            throw new Error('Failed to update backend conversation');
+                        }
+
+                        console.log("Backend conversation updated successfully");
+                    } catch (error) {
+                        console.error("Error updating backend conversation:", error);
+                        statusMessage.textContent = 'Error connecting to conversation. Please try again.';
+                        button.disabled = false;
+                        return;
+                    }
+
+                    // Clear existing messages
+                    utterancesDiv.innerHTML = '';
+
+                    // Setup new EventSource connection
+                    setupEventSource();
+
+                    statusMessage.textContent = 'Connecting to conversation...';
+                } else {
+                    throw new Error('No conversation URL in response');
+                }
+            } catch (error) {
+                console.error("Error creating conversation:", error);
+                statusMessage.textContent = 'Error creating conversation. Please try again.';
+            } finally {
+                button.disabled = false;
+            }
+        }
+
         // Function to update settings
         function updateSettings() {
             const newSettings = {
@@ -413,17 +521,6 @@
             if (JSON.stringify(newSettings) !== JSON.stringify(currentSettings)) {
                 console.log("Settings changed from", currentSettings, "to", newSettings);
                 currentSettings = newSettings;
-
-                // Update status
-                statusIndicator.classList.add('connecting');
-                statusMessage.style.display = 'block';
-                statusMessage.textContent = 'Updating conversation settings...';
-
-                // Clear existing messages
-                utterancesDiv.innerHTML = '';
-
-                // Setup new EventSource connection
-                setupEventSource();
             }
         }
 
@@ -431,6 +528,9 @@
         topicSelect.addEventListener('change', updateSettings);
         sourceLangSelect.addEventListener('change', updateSettings);
         targetLangSelect.addEventListener('change', updateSettings);
+
+        // Add event listener to create conversation button
+        document.getElementById('create-conversation-btn').addEventListener('click', createNewConversation);
 
         // Initial setup
         currentEventSource = setupEventSource();
