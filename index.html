@@ -1,80 +1,253 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Video Call with Live Utterances</title>
+    <title>Duolingo-V2 - AI Conversation Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; font-family: sans-serif; display: flex; height: 100vh; }
-        #left-pane { flex: 1; padding: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column; overflow-y: auto; }
-        #right-pane { flex: 1; padding: 10px; display: flex; flex-direction: column; overflow-y: auto; }
-        #utterances-content { flex-grow: 1; overflow-y: auto; border: 1px solid #eee; padding: 5px; }
-        #utterances-content p { margin: 0 0 5px 0; padding: 8px; border-radius: 5px; }
-        .user-utterance { background-color: #e3f2fd; border: 1px solid #bbdefb; }
-        .ai-response { background-color: #f3e5f5; border: 1px solid #e1bee7; margin-left: 20px; }
-        iframe { width: 100%; border: none; }
+        * { 
+            margin: 0; 
+            padding: 0; 
+            box-sizing: border-box; 
+            font-family: 'Inter', sans-serif;
+        }
+
+        body { 
+            margin: 0; 
+            height: 100vh; 
+            display: flex; 
+            background: #f0f2f5;
+        }
+
+        .container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+
+        #left-pane { 
+            flex: 1.2;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #d1d7db;
+            background: white;
+        }
+
+        #right-pane { 
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #efeae2;
+            background-image: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAABHNCSVQICAgIfAhkiAAAAAlwSFlzAAAApgAAAKYB3X3/OAAAABl0RVh0U29mdHdhcmUAd3d3Lmlua3NjYXBlLm9yZ5vuPBoAAACkSURBVEiJ7ZbBCcMwDEVfnUHoJt2ko3SnjJJNOkpH6SbdxD1IIalkyYkNDS2I/8GWrC/QF8gO8AQ+GpNb/u6Vn6PkacyplHyLaGqRE3AHtkDvlQ+eO4HnEnJLbgXs5L0HXg2SAV5L5FZuJR+AY6GpVeToNa0ZEHkP3IhcSx4FR6JXk0fDEfK/5Bg4Ql6VY+Eo+V9yC3gC+SvwlrwrrES+ttdI4QPkXyZ/AXvtqOPnt9WSAAAAAElFTkSuQmCC");
+        }
+
+        .header {
+            background: #00a884;
+            color: white;
+            padding: 16px;
+            font-size: 1.2em;
+            font-weight: 600;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            z-index: 1;
+        }
+
+        .header small {
+            font-size: 0.7em;
+            opacity: 0.9;
+            font-weight: 400;
+            display: block;
+            margin-top: 4px;
+        }
+
+        #utterances-content { 
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column-reverse;
+        }
+
+        .message {
+            max-width: 65%;
+            margin: 8px 0;
+            padding: 8px 12px;
+            border-radius: 7.5px;
+            position: relative;
+            font-size: 0.95em;
+            line-height: 1.4;
+        }
+
+        .message::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            width: 12px;
+            height: 12px;
+            transform: translateY(0px);
+        }
+
+        .user-utterance {
+            background: #d9fdd3;
+            margin-right: 12px;
+            margin-left: auto;
+            border-top-right-radius: 0;
+        }
+
+        .user-utterance::before {
+            right: -12px;
+            clip-path: polygon(0 0, 100% 100%, 0 100%);
+            background: #d9fdd3;
+        }
+
+        .ai-response {
+            background: white;
+            margin-left: 12px;
+            margin-right: auto;
+            border-top-left-radius: 0;
+        }
+
+        .ai-response::before {
+            left: -12px;
+            clip-path: polygon(0 100%, 100% 0, 100% 100%);
+            background: white;
+        }
+
+        .message-header {
+            font-size: 0.75em;
+            color: #667781;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .message-time {
+            font-size: 0.7em;
+            color: #667781;
+            float: right;
+            margin-left: 8px;
+            margin-top: 4px;
+        }
+
+        iframe { 
+            width: 100%; 
+            height: 100%;
+            border: none;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #25d366;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .connecting {
+            background: #ffd700;
+        }
+
+        #status-message {
+            font-size: 0.85em;
+            color: #667781;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.8);
+            border-radius: 4px;
+            margin: 8px;
+            text-align: center;
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <div id="left-pane">
-        <h2>Video Call</h2>
-        <iframe src="https://tavus.daily.co/c52deae6dfcb" height="800" title="Iframe Example" allow="camera; microphone"></iframe>
-    </div>
-    <div id="right-pane">
-        <h2>Live Utterances & Responses</h2>
-        <div id="utterances-content">
-            <p>Waiting for utterances...</p>
+    <div class="container">
+        <div id="left-pane">
+            <div class="header">
+                Duolingo-V2
+                <small>AI-Powered Language Learning Platform</small>
+            </div>
+            <iframe src="https://tavus.daily.co/c9e8c18b8928" title="Video Call" allow="camera; microphone"></iframe>
+        </div>
+        <div id="right-pane">
+            <div class="header">
+                <div class="status-indicator"></div>
+                Live Conversation
+                <small>AI Assistant</small>
+            </div>
+            <div id="status-message">Connecting to conversation...</div>
+            <div id="utterances-content"></div>
         </div>
     </div>
 
     <script>
         const utterancesDiv = document.getElementById('utterances-content');
+        const statusIndicator = document.querySelector('.status-indicator');
+        const statusMessage = document.getElementById('status-message');
+        
+        function getFormattedTime() {
+            return new Date().toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            });
+        }
+
+        function createMessageElement(message, type) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const header = document.createElement('div');
+            header.className = 'message-header';
+            header.textContent = type === 'user-utterance' ? 'Me' : 'AI';
+            
+            const content = document.createElement('div');
+            content.className = 'message-content';
+            content.textContent = message.text;
+            
+            const time = document.createElement('div');
+            time.className = 'message-time';
+            time.textContent = getFormattedTime();
+            
+            messageDiv.appendChild(header);
+            messageDiv.appendChild(content);
+            messageDiv.appendChild(time);
+            
+            return messageDiv;
+        }
         
         function setupEventSource() {
             console.log("Setting up EventSource...");
             const eventSource = new EventSource('http://localhost:5001/listen-utterances');
-            console.log("EventSource created:", eventSource);
-            console.log("Initial readyState:", eventSource.readyState);
+            
+            statusIndicator.classList.add('connecting');
+            statusMessage.style.display = 'block';
+            statusMessage.textContent = 'Connecting to conversation...';
 
             eventSource.addEventListener('open', function(event) {
-                console.log("OPEN event received. ReadyState:", eventSource.readyState);
-                const waitingMsg = utterancesDiv.querySelector('p');
-                if (waitingMsg) {
-                    waitingMsg.textContent = "Connected. Waiting for utterances...";
-                }
+                console.log("Connection established");
+                statusIndicator.classList.remove('connecting');
+                statusMessage.style.display = 'none';
             });
 
             eventSource.addEventListener('message', function(event) {
-                console.log("MESSAGE event received. Data:", event.data);
                 try {
                     const message = JSON.parse(event.data);
-                    console.log("Parsed message:", message);
+                    console.log("Received message:", message);
                     
-                    // Clear the initial "waiting" message if it exists
-                    const waitingMsg = utterancesDiv.querySelector('p');
-                    if (waitingMsg && waitingMsg.textContent.includes("Waiting for utterances")) {
-                        utterancesDiv.innerHTML = '';
-                    }
-
-                    const newElement = document.createElement('p');
-                    newElement.textContent = message.text;
+                    const messageElement = createMessageElement(
+                        message,
+                        message.type === 'user_utterance' ? 'user-utterance' : 'ai-response'
+                    );
                     
-                    // Style based on message type
-                    if (message.type === 'user_utterance') {
-                        newElement.className = 'user-utterance';
-                    } else if (message.type === 'ai_response') {
-                        newElement.className = 'ai-response';
-                    }
-                    
-                    utterancesDiv.insertBefore(newElement, utterancesDiv.firstChild);
+                    utterancesDiv.insertBefore(messageElement, utterancesDiv.firstChild);
                 } catch (error) {
                     console.error("Error processing message:", error);
                 }
             });
 
             eventSource.addEventListener('error', function(event) {
-                console.error("ERROR event received:", event);
-                if (eventSource.readyState === EventSource.CLOSED) {
-                    console.log("Connection was closed. ReadyState:", eventSource.readyState);
-                }
+                console.error("Connection error:", event);
+                statusIndicator.classList.add('connecting');
+                statusMessage.style.display = 'block';
+                statusMessage.textContent = 'Connection lost. Reconnecting...';
             });
 
             return eventSource;
@@ -84,7 +257,6 @@
 
         window.addEventListener('beforeunload', () => {
             if (eventSource) {
-                console.log("Closing EventSource connection...");
                 eventSource.close();
             }
         });
