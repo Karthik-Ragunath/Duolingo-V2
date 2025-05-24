@@ -11,7 +11,7 @@ from daily import CallClient, Daily, EventHandler, VirtualMicrophoneDevice
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 import re
-from flask import Flask, Response, stream_with_context
+from flask import Flask, Response, stream_with_context, request
 from flask_cors import CORS
 from queue import Queue
 from threading import Thread
@@ -46,9 +46,8 @@ utterance_queue = Queue()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-def get_claude_response_translation_alone(utterance: str) -> str:
+def get_claude_response_translation_alone(utterance: str, source_lang: str, target_lang: str) -> str:
     """Get a response from Claude for the given utterance."""
-    topic = "Ordering food at a restaurant"
     client = Anthropic()
 
     try:
@@ -56,24 +55,24 @@ def get_claude_response_translation_alone(utterance: str) -> str:
             model="claude-3-opus-20240229",
             max_tokens=1024,
             temperature=0.7,
-            system=f"Act as a Spanish language tutor whose job is to translate the user's message to English. Our conversation topic is {topic}. " \
+            system=f"Act as a language tutor whose job is to translate from {source_lang} to {target_lang}. " \
                    f"Keep your responses short and concise. " \
-                   f"You must use the tool 'generate_response' to generate an english translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
+                   f"You must use the tool 'generate_response' to generate the translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
             messages=[
                 {"role": "user", "content": utterance}
             ],
             tools=[{
                 "name": "generate_response",
-                "description": "Generate an English translation of the user's message",
+                "description": f"Generate a {target_lang} translation of the {source_lang} message",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "english_translation": {
+                        "translation": {
                             "type": "string",
-                            "description": "The English translation of the response"
+                            "description": f"The {target_lang} translation of the message"
                         }
                     },
-                    "required": ["english_translation"]
+                    "required": ["translation"]
                 }
             }]
         )
@@ -86,9 +85,9 @@ def get_claude_response_translation_alone(utterance: str) -> str:
                     tool_name = content.name
                     tool_input = content.input
                     if tool_name == "generate_response":
-                        # Extract the Spanish response and English translation
-                        english_translation = tool_input["english_translation"]
-                        return {"English": english_translation}
+                        # Extract the translation
+                        translation = tool_input["translation"]
+                        return {"English": translation}  # Keep English key for backwards compatibility
         else:
             # Handle the case where Claude didn't use the tool
             response_text = message.content[0].text
@@ -101,9 +100,8 @@ def get_claude_response_translation_alone(utterance: str) -> str:
         print(f"Error getting Claude response: {e}")
         return None
 
-def get_claude_response(utterance: str) -> str:
+def get_claude_response(utterance: str, topic: str, source_lang: str, target_lang: str) -> str:
     """Get a response from Claude for the given utterance."""
-    topic = "Ordering food at a restaurant"
     client = Anthropic()
 
     try:
@@ -111,29 +109,29 @@ def get_claude_response(utterance: str) -> str:
             model="claude-3-opus-20240229",
             max_tokens=1024,
             temperature=0.7,
-            system=f"Act as a Spanish language tutor. Engage in a conversation with me, correcting my grammar and vocabulary as needed. " \
-                   f"Respond to my messages in Spanish, and provide English translations or explanations when necessary to help me understand. Our conversation topic is {topic}. " \
+            system=f"Act as a {target_lang} language tutor. Engage in a conversation with me, correcting my grammar and vocabulary as needed. " \
+                   f"Respond to my messages in {target_lang}, and provide {source_lang} translations when necessary to help me understand. Our conversation topic is {topic}. " \
                    f"Keep your responses short and concise. " \
-                   f"You must use the tool 'generate_response' to generate a response in Spanish with an English translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
+                   f"You must use the tool 'generate_response' to generate a response in {target_lang} with a {source_lang} translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
             messages=[
                 {"role": "user", "content": utterance}
             ],
             tools=[{
                 "name": "generate_response",
-                "description": "Generate a response in Spanish with an English translation",
+                "description": f"Generate a response in {target_lang} with a {source_lang} translation",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "spanish_response": {
+                        "target_response": {
                             "type": "string",
-                            "description": "The response in Spanish"
+                            "description": f"The response in {target_lang}"
                         },
-                        "english_translation": {
+                        "source_translation": {
                             "type": "string",
-                            "description": "The English translation of the response"
+                            "description": f"The {source_lang} translation of the response"
                         }
                     },
-                    "required": ["spanish_response", "english_translation"]
+                    "required": ["target_response", "source_translation"]
                 }
             }]
         )
@@ -146,10 +144,13 @@ def get_claude_response(utterance: str) -> str:
                     tool_name = content.name
                     tool_input = content.input
                     if tool_name == "generate_response":
-                        # Extract the Spanish response and English translation
-                        spanish_response = tool_input["spanish_response"]
-                        english_translation = tool_input["english_translation"]
-                        return {"Spanish": spanish_response, "English": english_translation}
+                        # Extract the responses
+                        target_response = tool_input["target_response"]
+                        source_translation = tool_input["source_translation"]
+                        return {
+                            "Spanish": target_response,  # Keep Spanish key for backwards compatibility
+                            "English": source_translation  # Keep English key for backwards compatibility
+                        }
         else:
             # Handle the case where Claude didn't use the tool
             response_text = message.content[0].text
@@ -164,6 +165,20 @@ def get_claude_response(utterance: str) -> str:
 
 @app.route('/listen-utterances')
 def listen_utterances():
+    # Get conversation settings from query parameters
+    topic = request.args.get('topic', 'restaurant')
+    source_lang = request.args.get('source_lang', 'english')
+    target_lang = request.args.get('target_lang', 'spanish')
+
+    # Map topic values to full descriptions
+    topic_descriptions = {
+        'restaurant': 'Ordering food at a restaurant',
+        'travel': 'Booking a hotel room',
+        'shopping': 'Shopping for clothes'
+    }
+    
+    topic_description = topic_descriptions.get(topic, topic_descriptions['restaurant'])
+
     def event_stream():
         while True:
             try:
@@ -175,19 +190,19 @@ def listen_utterances():
                     print("DEBUG: Received None utterance, breaking stream")
                     break
                 
-                utterance_translation = get_claude_response_translation_alone(utterance)
+                utterance_translation = get_claude_response_translation_alone(utterance, source_lang, target_lang)
                 # First, send the user's utterance
                 user_message = {
                     "type": "user_utterance",
                     "text": utterance,
                     "spanish_text": utterance,
-                    "english_text": utterance_translation["English"]
+                    "english_text": utterance_translation["English"] if utterance_translation else utterance
                 }
                 yield f"data: {json.dumps(user_message)}\n\n"
                 print(f"DEBUG: User message yielded: {user_message}")
 
                 # Get Claude's response
-                claude_response = get_claude_response(utterance)
+                claude_response = get_claude_response(utterance, topic_description, source_lang, target_lang)
                 print(f"DEBUG: Raw Claude response: {claude_response}")
                 
                 if claude_response is not None:

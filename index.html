@@ -24,6 +24,43 @@
             height: 100%;
         }
 
+        #settings-pane {
+            width: 300px;
+            background: white;
+            border-right: 1px solid #d1d7db;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .settings-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .settings-group label {
+            font-size: 0.9em;
+            color: #667781;
+            font-weight: 600;
+        }
+
+        .settings-group select {
+            padding: 8px 12px;
+            border: 1px solid #d1d7db;
+            border-radius: 8px;
+            font-size: 1em;
+            color: #111;
+            background: #f0f2f5;
+            cursor: pointer;
+        }
+
+        .settings-group select:focus {
+            outline: none;
+            border-color: #00a884;
+        }
+
         #left-pane { 
             flex: 1.2;
             display: flex;
@@ -169,6 +206,32 @@
 </head>
 <body>
     <div class="container">
+        <div id="settings-pane">
+            <div class="settings-group">
+                <label for="topic">Topic of Conversation</label>
+                <select id="topic">
+                    <option value="restaurant">Ordering food at a restaurant</option>
+                    <option value="travel">Booking a hotel room</option>
+                    <option value="shopping">Shopping for clothes</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label for="source-lang">Source Language</label>
+                <select id="source-lang">
+                    <option value="english">English</option>
+                    <option value="spanish">Spanish</option>
+                    <option value="french">French</option>
+                </select>
+            </div>
+            <div class="settings-group">
+                <label for="target-lang">Translation Language</label>
+                <select id="target-lang">
+                    <option value="english">English</option>
+                    <option value="spanish" selected>Spanish</option>
+                    <option value="french">French</option>
+                </select>
+            </div>
+        </div>
         <div id="left-pane">
             <div class="header">
                 Duolingo-V2
@@ -229,7 +292,12 @@
         
         function setupEventSource() {
             console.log("Setting up EventSource...");
-            const eventSource = new EventSource('http://localhost:5001/listen-utterances');
+            const params = new URLSearchParams({
+                topic: currentSettings.topic,
+                source_lang: currentSettings.sourceLang,
+                target_lang: currentSettings.targetLang
+            });
+            const eventSource = new EventSource(`http://localhost:5001/listen-utterances?${params.toString()}`);
             
             statusIndicator.classList.add('connecting');
             statusMessage.style.display = 'block';
@@ -310,6 +378,53 @@
                 eventSource.close();
             }
         });
+
+        // Settings handling
+        const topicSelect = document.getElementById('topic');
+        const sourceLangSelect = document.getElementById('source-lang');
+        const targetLangSelect = document.getElementById('target-lang');
+
+        // Store current settings
+        let currentSettings = {
+            topic: topicSelect.value,
+            sourceLang: sourceLangSelect.value,
+            targetLang: targetLangSelect.value
+        };
+
+        // Function to update settings
+        function updateSettings() {
+            const newSettings = {
+                topic: topicSelect.value,
+                sourceLang: sourceLangSelect.value,
+                targetLang: targetLangSelect.value
+            };
+
+            // Check if settings have changed
+            if (JSON.stringify(newSettings) !== JSON.stringify(currentSettings)) {
+                currentSettings = newSettings;
+                
+                // Close existing EventSource connection
+                if (eventSource) {
+                    eventSource.close();
+                }
+
+                // Update status
+                statusIndicator.classList.add('connecting');
+                statusMessage.style.display = 'block';
+                statusMessage.textContent = 'Updating conversation settings...';
+
+                // Clear existing messages
+                utterancesDiv.innerHTML = '';
+
+                // Reconnect with new settings
+                setupEventSource();
+            }
+        }
+
+        // Add event listeners to settings controls
+        topicSelect.addEventListener('change', updateSettings);
+        sourceLangSelect.addEventListener('change', updateSettings);
+        targetLangSelect.addEventListener('change', updateSettings);
     </script>
 </body>
 </html>
