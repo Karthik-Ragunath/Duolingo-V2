@@ -1,0 +1,29 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "interaction_protocol_tavus",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/interaction_protocol_tavus.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "--conversation_url=https://tavus.daily.co/c77ce70b4837",
+                "--conversation_id=c77ce70b4837"
+            ]
+        },
+        {
+            "name": "create_conversations",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/create_conversations.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": []
+        }
+    ]
+}
