@@ -7,18 +7,19 @@
         #left-pane { flex: 1; padding: 10px; border-right: 1px solid #ccc; display: flex; flex-direction: column; overflow-y: auto; }
         #right-pane { flex: 1; padding: 10px; display: flex; flex-direction: column; overflow-y: auto; }
         #utterances-content { flex-grow: 1; overflow-y: auto; border: 1px solid #eee; padding: 5px; }
-        #utterances-content p { margin: 0 0 5px 0; padding: 3px; border-bottom: 1px dotted #f0f0f0; }
-        #utterances-content p:last-child { border-bottom: none; }
+        #utterances-content p { margin: 0 0 5px 0; padding: 8px; border-radius: 5px; }
+        .user-utterance { background-color: #e3f2fd; border: 1px solid #bbdefb; }
+        .ai-response { background-color: #f3e5f5; border: 1px solid #e1bee7; margin-left: 20px; }
         iframe { width: 100%; border: none; }
     </style>
 </head>
 <body>
     <div id="left-pane">
         <h2>Video Call</h2>
-        <iframe src="https://tavus.daily.co/c58a3ce52e7f" height="800" title="Iframe Example" allow="camera; microphone"></iframe>
+        <iframe src="https://tavus.daily.co/c52deae6dfcb" height="800" title="Iframe Example" allow="camera; microphone"></iframe>
     </div>
     <div id="right-pane">
-        <h2>Live Utterances</h2>
+        <h2>Live Utterances & Responses</h2>
         <div id="utterances-content">
             <p>Waiting for utterances...</p>
         </div>
@@ -33,7 +34,6 @@
             console.log("EventSource created:", eventSource);
             console.log("Initial readyState:", eventSource.readyState);
 
-            // Using addEventListener for 'open'
             eventSource.addEventListener('open', function(event) {
                 console.log("OPEN event received. ReadyState:", eventSource.readyState);
                 const waitingMsg = utterancesDiv.querySelector('p');
@@ -42,22 +42,34 @@
                 }
             });
 
-            // Using addEventListener for 'message'
             eventSource.addEventListener('message', function(event) {
                 console.log("MESSAGE event received. Data:", event.data);
                 try {
-                    const utterance = JSON.parse(event.data);
-                    console.log("Parsed utterance:", utterance);
+                    const message = JSON.parse(event.data);
+                    console.log("Parsed message:", message);
                     
-                    const newUtterance = document.createElement('p');
-                    newUtterance.textContent = utterance;
-                    utterancesDiv.insertBefore(newUtterance, utterancesDiv.firstChild);
+                    // Clear the initial "waiting" message if it exists
+                    const waitingMsg = utterancesDiv.querySelector('p');
+                    if (waitingMsg && waitingMsg.textContent.includes("Waiting for utterances")) {
+                        utterancesDiv.innerHTML = '';
+                    }
+
+                    const newElement = document.createElement('p');
+                    newElement.textContent = message.text;
+                    
+                    // Style based on message type
+                    if (message.type === 'user_utterance') {
+                        newElement.className = 'user-utterance';
+                    } else if (message.type === 'ai_response') {
+                        newElement.className = 'ai-response';
+                    }
+                    
+                    utterancesDiv.insertBefore(newElement, utterancesDiv.firstChild);
                 } catch (error) {
                     console.error("Error processing message:", error);
                 }
             });
 
-            // Using addEventListener for 'error'
             eventSource.addEventListener('error', function(event) {
                 console.error("ERROR event received:", event);
                 if (eventSource.readyState === EventSource.CLOSED) {
@@ -65,18 +77,11 @@
                 }
             });
 
-            // Log any state changes
-            setInterval(() => {
-                console.log("Current readyState:", eventSource.readyState);
-            }, 5000);
-
             return eventSource;
         }
 
-        // Create the EventSource
         const eventSource = setupEventSource();
 
-        // Cleanup on page unload
         window.addEventListener('beforeunload', () => {
             if (eventSource) {
                 console.log("Closing EventSource connection...");

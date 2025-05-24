@@ -6,3 +6,4 @@ transformers
 accelerate
 flask 
 flask-cors
+anthropic

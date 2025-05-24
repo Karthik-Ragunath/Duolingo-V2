@@ -15,6 +15,7 @@ from flask import Flask, Response, stream_with_context
 from flask_cors import CORS
 from queue import Queue
 from threading import Thread
+from anthropic import Anthropic
 
 # # model_name = "deepseek-ai/deepseek-math-7b-instruct"
 # model_name = "/home/ubuntu/karthik-ragunath-ananda-kumar-utah/deepseek-checkpoints/deepseek-math-7b-rl"
@@ -28,6 +29,10 @@ load_dotenv()
 DAILY_API_KEY = os.getenv("DAILY_API_KEY", "")
 TAVUS_API_KEY = os.getenv("TAVUS_API_KEY")
 ENV_TO_TEST = os.getenv("ENV_TO_TEST", "prod")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")  # Add your Anthropic API key to .env file
+
+# Initialize Anthropic client
+anthropic = Anthropic(api_key=ANTHROPIC_API_KEY)
 
 assistant_utterance = None
 gpu_joined = False
@@ -40,6 +45,23 @@ questions_seen = {}
 utterance_queue = Queue()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
+
+def get_claude_response(utterance: str) -> str:
+    """Get a response from Claude for the given utterance."""
+    try:
+        message = anthropic.messages.create(
+            model="claude-3-opus-20240229",
+            max_tokens=1024,
+            temperature=0.7,
+            system="You are not an AI. You are a reflection of me, Karthik. So answer on behalf of me. Keep your responses natural, concise, and engaging.",
+            messages=[
+                {"role": "user", "content": utterance}
+            ]
+        )
+        return message.content[0].text
+    except Exception as e:
+        print(f"Error getting Claude response: {e}")
+        return f"I apologize, but I encountered an error processing your message: {str(e)}"
 
 @app.route('/listen-utterances')
 def listen_utterances():
@@ -54,29 +76,37 @@ def listen_utterances():
                     print("DEBUG: Received None utterance, breaking stream")
                     break
                 
-                # Format the SSE message - note the actual newlines, not escaped
-                message = f"data: {json.dumps(utterance)}\n\n"
-                print(f"DEBUG: Sending SSE message: {repr(message)}")  # repr shows exact string content
-                
-                yield message
-                print("DEBUG: Message yielded successfully")
+                # First, send the user's utterance
+                user_message = {
+                    "type": "user_utterance",
+                    "text": utterance
+                }
+                yield f"data: {json.dumps(user_message)}\n\n"
+                print("DEBUG: User message yielded successfully")
+
+                # Get Claude's response
+                claude_response = get_claude_response(utterance)
+                ai_message = {
+                    "type": "ai_response",
+                    "text": claude_response
+                }
+                yield f"data: {json.dumps(ai_message)}\n\n"
+                print("DEBUG: AI response yielded successfully")
                 
                 utterance_queue.task_done()
             except Exception as e:
                 print(f"ERROR in event_stream: {str(e)}")
                 continue
     
-    # Set required SSE headers
-    response = Response(
+    return Response(
         stream_with_context(event_stream()),
         mimetype='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no'  # Disable proxy buffering
+            'X-Accel-Buffering': 'no'
         }
     )
-    return response
 
 class TestType(Enum):
     FULL = "full"
@@ -103,7 +133,7 @@ class RoomHandler(EventHandler):
             role_text = json_message["properties"]["role"]
             print(f"DEBUG: Received utterance - Text: {utterance_text}, Role: {role_text}")
             
-            if role_text == "replica":  # Capture speech from user/others
+            if role_text == "replica":  # Changed to capture non-replica speech
                 print(f"DEBUG: Queueing utterance from {role_text}")
                 utterance_queue.put(utterance_text)
                 print(f"DEBUG: Successfully queued utterance")
