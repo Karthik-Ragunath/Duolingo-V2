@@ -174,7 +174,7 @@
                 Duolingo-V2
                 <small>AI-Powered Language Learning Platform</small>
             </div>
-            <iframe src="https://tavus.daily.co/cf7487798bb9" title="Video Call" allow="camera; microphone"></iframe>
+            <iframe src="https://tavus.daily.co/c20bcd3c9319" title="Video Call" allow="camera; microphone"></iframe>
         </div>
         <div id="right-pane">
             <div class="header">
@@ -200,17 +200,21 @@
             });
         }
 
-        function createMessageElement(message, type) {
+        function createMessageElement(text, type, label) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${type}`;
             
             const header = document.createElement('div');
             header.className = 'message-header';
-            header.textContent = type === 'ai-response' ? 'Avatar' : 'Me';
+            if (type === 'ai-response') {
+                header.textContent = `Avatar (${label})`;
+            } else {
+                header.textContent = `Me (${label})`;
+            }
             
             const content = document.createElement('div');
             content.className = 'message-content';
-            content.textContent = message.text;
+            content.textContent = text;
             
             const time = document.createElement('div');
             time.className = 'message-time';
@@ -242,12 +246,48 @@
                     const message = JSON.parse(event.data);
                     console.log("Received message:", message);
                     
-                    const messageElement = createMessageElement(
-                        message,
-                        message.type === 'ai_response' ? 'user-utterance' : 'ai-response'
-                    );
-                    
-                    utterancesDiv.insertBefore(messageElement, utterancesDiv.firstChild);
+                    if (message.type === 'user_utterance') {
+                        // Handle user utterance (avatar's speech)
+                        if (message.spanish_text) {
+                            const messageElement = createMessageElement(
+                                message.spanish_text,
+                                'ai-response',
+                                'Original'
+                            );
+                            utterancesDiv.insertBefore(messageElement, utterancesDiv.firstChild);
+                        }
+
+                        // Handle user utterance - English translation
+                        if (message.english_text) {
+                            const utteranceTranslationElement = createMessageElement(
+                                message.english_text,
+                                'ai-response',
+                                'English Translation'
+                            );
+                            utterancesDiv.insertBefore(utteranceTranslationElement, utterancesDiv.firstChild);
+                        }
+
+                    } else if (message.type === 'ai_response') {
+                        // Handle Claude's response - Spanish text
+                        if (message.spanish_text) {
+                            const spanishElement = createMessageElement(
+                                message.spanish_text,
+                                'user-utterance',
+                                'Spanish'
+                            );
+                            utterancesDiv.insertBefore(spanishElement, utterancesDiv.firstChild);
+                        }
+                        
+                        // Handle Claude's response - English translation
+                        if (message.english_text) {
+                            const englishElement = createMessageElement(
+                                message.english_text,
+                                'user-utterance',
+                                'English Translation'
+                            );
+                            utterancesDiv.insertBefore(englishElement, utterancesDiv.firstChild);
+                        }
+                    }
                 } catch (error) {
                     console.error("Error processing message:", error);
                 }
