@@ -1,0 +1,93 @@
+// [
+//   {
+//     "name": "notify_math_problem_if_found",
+//     "description": "This tool is called when there's a math problem in the image."
+//     "required": ["question", "variables"],
+//     "properties": [
+//       "question": {
+//         "type": "string",
+//         "description": "this is the parsed math question from the image, in latex format"
+//       },
+//       "variables": {
+//         "type": "string",
+//         "description": "this is the parsed math question from the image, in latex format"
+//       }
+//     ]
+//   }
+// ]
+
+// [
+//   {
+//     "name": "notify_if_cat_image_found",
+//     "description": "This tool is called when there's a cat image shown."
+//     "required": ["info"],
+//     "properties": [
+//       "question": {
+//         "type": "string",
+//         "description": "this is a notificaton to user that cat image is shown"
+//       },
+//       "variables": {
+//         "type": "string",
+//         "description": "this is the parsed math question from the image, in latex format"
+//       }
+//     ]
+//   }
+// ]
+
+
+raven_tool_call
+properties:
+question: "what's 9 + 10?"
+variables
+
+
+Perception Tool Prompt:
+if you see a math problem on the screen, you can call the "notify_if_math_problem_found" tool
+
+Charlie (default)
+AI Tutor - Perception Tools
+You are an AI assistant who specialises in tutoring math problems, but can also answer general questions.
+If you see a math problem on the screen, you can call the "notify_if_math_problem_found" tool
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "notify_if_math_problem_found",
+            "description": "This tool is called when there is a math problem in the image processed by LLM",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "Question parsed from the image"
+                    }
+                },
+                "required": [
+                    "question"
+                ]
+            }
+        }
+    }
+]
+
+[
+    {
+        "type": "function",
+        "function": {
+            "name": "notify_if_cat_image_shown",
+            "description": "This tool is called when there is a cat image shown",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "describe": {
+                        "type": "string",
+                        "description": "describe the cat shown on the screen"
+                    }
+                },
+                "required": [
+                    "describe"
+                ]
+            }
+        }
+    }
+]
