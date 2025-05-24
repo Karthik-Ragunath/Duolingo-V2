@@ -46,22 +46,120 @@ utterance_queue = Queue()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-def get_claude_response(utterance: str) -> str:
+def get_claude_response_translation_alone(utterance: str) -> str:
     """Get a response from Claude for the given utterance."""
+    topic = "Ordering food at a restaurant"
+    client = Anthropic()
+
     try:
-        message = anthropic.messages.create(
+        message = client.messages.create(
             model="claude-3-opus-20240229",
             max_tokens=1024,
             temperature=0.7,
-            system="You are not an AI. You are a reflection of me, Karthik. So answer on behalf of me. Keep your responses natural, concise, and engaging.",
+            system=f"Act as a Spanish language tutor whose job is to translate the user's message to English. Our conversation topic is {topic}. " \
+                   f"Keep your responses short and concise. " \
+                   f"You must use the tool 'generate_response' to generate an english translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
             messages=[
                 {"role": "user", "content": utterance}
-            ]
+            ],
+            tools=[{
+                "name": "generate_response",
+                "description": "Generate an English translation of the user's message",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "english_translation": {
+                            "type": "string",
+                            "description": "The English translation of the response"
+                        }
+                    },
+                    "required": ["english_translation"]
+                }
+            }]
         )
-        return message.content[0].text
+        
+        print(f"DEBUG: Claude response translation alone: {message}")
+        # Check if Claude used the tool
+        if message.stop_reason == "tool_use":
+            for content in message.content:
+                if content.type == "tool_use":
+                    tool_name = content.name
+                    tool_input = content.input
+                    if tool_name == "generate_response":
+                        # Extract the Spanish response and English translation
+                        english_translation = tool_input["english_translation"]
+                        return {"English": english_translation}
+        else:
+            # Handle the case where Claude didn't use the tool
+            response_text = message.content[0].text
+            if response_text is not None and response_text != "":
+                return {"English": response_text.strip()}
+            else:
+                return {"English": "Translation not available"}
+
     except Exception as e:
         print(f"Error getting Claude response: {e}")
-        # return f"I apologize, but I encountered an error processing your message: {str(e)}"
+        return None
+
+def get_claude_response(utterance: str) -> str:
+    """Get a response from Claude for the given utterance."""
+    topic = "Ordering food at a restaurant"
+    client = Anthropic()
+
+    try:
+        message = client.messages.create(
+            model="claude-3-opus-20240229",
+            max_tokens=1024,
+            temperature=0.7,
+            system=f"Act as a Spanish language tutor. Engage in a conversation with me, correcting my grammar and vocabulary as needed. " \
+                   f"Respond to my messages in Spanish, and provide English translations or explanations when necessary to help me understand. Our conversation topic is {topic}. " \
+                   f"Keep your responses short and concise. " \
+                   f"You must use the tool 'generate_response' to generate a response in Spanish with an English translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
+            messages=[
+                {"role": "user", "content": utterance}
+            ],
+            tools=[{
+                "name": "generate_response",
+                "description": "Generate a response in Spanish with an English translation",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "spanish_response": {
+                            "type": "string",
+                            "description": "The response in Spanish"
+                        },
+                        "english_translation": {
+                            "type": "string",
+                            "description": "The English translation of the response"
+                        }
+                    },
+                    "required": ["spanish_response", "english_translation"]
+                }
+            }]
+        )
+        
+        print(f"DEBUG: Claude response: {message}")
+        # Check if Claude used the tool
+        if message.stop_reason == "tool_use":
+            for content in message.content:
+                if content.type == "tool_use":
+                    tool_name = content.name
+                    tool_input = content.input
+                    if tool_name == "generate_response":
+                        # Extract the Spanish response and English translation
+                        spanish_response = tool_input["spanish_response"]
+                        english_translation = tool_input["english_translation"]
+                        return {"Spanish": spanish_response, "English": english_translation}
+        else:
+            # Handle the case where Claude didn't use the tool
+            response_text = message.content[0].text
+            parts = response_text.split('\n\n')
+            if len(parts) >= 2:
+                return {"Spanish": parts[0].strip(), "English": parts[1].strip()}
+            return {"Spanish": response_text, "English": "Translation not available"}
+
+    except Exception as e:
+        print(f"Error getting Claude response: {e}")
         return None
 
 @app.route('/listen-utterances')
@@ -77,25 +175,44 @@ def listen_utterances():
                     print("DEBUG: Received None utterance, breaking stream")
                     break
                 
+                utterance_translation = get_claude_response_translation_alone(utterance)
                 # First, send the user's utterance
                 user_message = {
                     "type": "user_utterance",
-                    "text": utterance
+                    "text": utterance,
+                    "spanish_text": utterance,
+                    "english_text": utterance_translation["English"]
                 }
                 yield f"data: {json.dumps(user_message)}\n\n"
-                print("DEBUG: User message yielded successfully")
+                print(f"DEBUG: User message yielded: {user_message}")
 
                 # Get Claude's response
                 claude_response = get_claude_response(utterance)
-                if claude_response is None:
+                print(f"DEBUG: Raw Claude response: {claude_response}")
+                
+                if claude_response is not None:
+                    if isinstance(claude_response, dict) and "Spanish" in claude_response and "English" in claude_response:
+                        # Handle structured response from tool call
+                        ai_message = {
+                            "type": "ai_response",
+                            "text": claude_response["Spanish"],  # For backwards compatibility
+                            "spanish_text": claude_response["Spanish"],
+                            "english_text": claude_response["English"]
+                        }
+                    else:
+                        # Handle plain text response
+                        ai_message = {
+                            "type": "ai_response",
+                            "text": str(claude_response),
+                            "spanish_text": str(claude_response),
+                            "english_text": "Translation not available"
+                        }
+                    
+                    print(f"DEBUG: Formatted AI message: {ai_message}")
+                    yield f"data: {json.dumps(ai_message)}\n\n"
+                    print("DEBUG: AI response yielded successfully")
+                else:
                     print("DEBUG: Claude response is None, skipping")
-                    continue
-                ai_message = {
-                    "type": "ai_response",
-                    "text": claude_response
-                }
-                yield f"data: {json.dumps(ai_message)}\n\n"
-                print("DEBUG: AI response yielded successfully")
                 
                 utterance_queue.task_done()
             except Exception as e:
