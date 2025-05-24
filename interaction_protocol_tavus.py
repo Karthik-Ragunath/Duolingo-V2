@@ -458,15 +458,15 @@ def init_daily_client():
     return client
 
 
-def run_heartbeat(conversation_url: str, conversation_id: str):
-    global client_global, conversation_id_global, conversation_url_global
-    client_global = init_daily_client()
-    # Join the room
-    conversation_id_global = conversation_id
-    conversation_url_global = conversation_url
-    join_room(client_global, conversation_url_global, conversation_id_global)
-    while True:
-        time.sleep(1)
+# def run_heartbeat(conversation_url: str, conversation_id: str):
+#     global client_global, conversation_id_global, conversation_url_global
+#     client_global = init_daily_client()
+#     # Join the room
+#     conversation_id_global = conversation_id
+#     conversation_url_global = conversation_url
+#     join_room(client_global, conversation_url_global, conversation_id_global)
+#     while True:
+#         time.sleep(1)
 
 
 def handle_conversation_change(new_url: str) -> bool:
