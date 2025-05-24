@@ -11,7 +11,7 @@ from daily import CallClient, Daily, EventHandler, VirtualMicrophoneDevice
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 import re
-from flask import Flask, Response, stream_with_context, request
+from flask import Flask, Response, stream_with_context, request, jsonify
 from flask_cors import CORS
 from queue import Queue
 from threading import Thread
@@ -46,13 +46,26 @@ utterance_queue = Queue()
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
+# Add new global variables for current conversation settings and client
+current_conversation_settings = {
+    'source_lang': 'english',
+    'target_lang': 'spanish',
+    'topic': 'restaurant'
+}
+
+# Global variables for Daily client and conversation info
+client_global = None
+conversation_id_global = None
+conversation_url_global = None
+
 def get_claude_response_translation_alone(utterance: str, source_lang: str, target_lang: str) -> str:
     """Get a response from Claude for the given utterance."""
     client = Anthropic()
 
     try:
         message = client.messages.create(
-            model="claude-3-opus-20240229",
+            # model="claude-3-opus-20240229",
+            model="claude-3-5-haiku-20241022",
             max_tokens=1024,
             temperature=0.7,
             system=f"Act as a language tutor whose job is to translate from {source_lang} to {target_lang}. " \
@@ -63,16 +76,16 @@ def get_claude_response_translation_alone(utterance: str, source_lang: str, targ
             ],
             tools=[{
                 "name": "generate_response",
-                "description": f"Generate a {target_lang} translation of the {source_lang} message",
+                "description": f"Translate the {source_lang} message to {target_lang}",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "translation": {
+                        "target_translation": {
                             "type": "string",
-                            "description": f"The {target_lang} translation of the message"
+                            "description": f"The translation of the message in {target_lang}"
                         }
                     },
-                    "required": ["translation"]
+                    "required": ["target_translation"]
                 }
             }]
         )
@@ -86,7 +99,7 @@ def get_claude_response_translation_alone(utterance: str, source_lang: str, targ
                     tool_input = content.input
                     if tool_name == "generate_response":
                         # Extract the translation
-                        translation = tool_input["translation"]
+                        translation = tool_input["target_translation"]
                         return {"English": translation}  # Keep English key for backwards compatibility
         else:
             # Handle the case where Claude didn't use the tool
@@ -106,32 +119,33 @@ def get_claude_response(utterance: str, topic: str, source_lang: str, target_lan
 
     try:
         message = client.messages.create(
-            model="claude-3-opus-20240229",
+            # model="claude-3-opus-20240229",
+            model="claude-3-5-haiku-20241022",
             max_tokens=1024,
             temperature=0.7,
-            system=f"Act as a {target_lang} language tutor. Engage in a conversation with me, correcting my grammar and vocabulary as needed. " \
-                   f"Respond to my messages in {target_lang}, and provide {source_lang} translations when necessary to help me understand. Our conversation topic is {topic}. " \
+            system=f"Act as a {source_lang} language tutor. Engage in a conversation with me, correcting my grammar and vocabulary as needed. " \
+                   f"Respond to my messages in {source_lang}, and provide {target_lang} translations when necessary to help me understand. Our conversation topic is {topic}. " \
                    f"Keep your responses short and concise. " \
-                   f"You must use the tool 'generate_response' to generate a response in {target_lang} with a {source_lang} translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
+                   f"You must use the tool 'generate_response' to generate a response in {source_lang} with a {target_lang} translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
             messages=[
                 {"role": "user", "content": utterance}
             ],
             tools=[{
                 "name": "generate_response",
-                "description": f"Generate a response in {target_lang} with a {source_lang} translation",
+                "description": f"Generate a response in {source_lang} with a {target_lang} translation",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "target_response": {
+                        "source_response": {
                             "type": "string",
-                            "description": f"The response in {target_lang}"
+                            "description": f"The response in {source_lang}"
                         },
-                        "source_translation": {
+                        "target_translation": {
                             "type": "string",
-                            "description": f"The {source_lang} translation of the response"
+                            "description": f"The {target_lang} translation of the response"
                         }
                     },
-                    "required": ["target_response", "source_translation"]
+                    "required": ["source_response", "target_translation"]
                 }
             }]
         )
@@ -145,11 +159,11 @@ def get_claude_response(utterance: str, topic: str, source_lang: str, target_lan
                     tool_input = content.input
                     if tool_name == "generate_response":
                         # Extract the responses
-                        target_response = tool_input["target_response"]
-                        source_translation = tool_input["source_translation"]
+                        source_response = tool_input["source_response"]
+                        target_translation = tool_input["target_translation"]
                         return {
-                            "Spanish": target_response,  # Keep Spanish key for backwards compatibility
-                            "English": source_translation  # Keep English key for backwards compatibility
+                            "Spanish": source_response,  # Keep Spanish key for backwards compatibility
+                            "English": target_translation  # Keep English key for backwards compatibility
                         }
         else:
             # Handle the case where Claude didn't use the tool
@@ -163,13 +177,49 @@ def get_claude_response(utterance: str, topic: str, source_lang: str, target_lan
         print(f"Error getting Claude response: {e}")
         return None
 
+@app.route('/update-conversation', methods=['POST'])
+def update_conversation():
+    """Endpoint to handle conversation updates from frontend."""
+    try:
+        data = request.get_json()
+        new_url = data.get('conversation_url')
+        
+        # Update current conversation settings
+        global current_conversation_settings
+        current_conversation_settings.update({
+            'source_lang': data.get('source_lang', current_conversation_settings['source_lang']),
+            'target_lang': data.get('target_lang', current_conversation_settings['target_lang']),
+            'topic': data.get('topic', current_conversation_settings['topic'])
+        })
+        print(f"DEBUG: Current conversation settings: {current_conversation_settings}")
+        if not new_url:
+            return jsonify({'error': 'No conversation URL provided'}), 400
+            
+        success = handle_conversation_change(new_url)
+        
+        if success:
+            return jsonify({
+                'status': 'success', 
+                'message': 'Conversation updated',
+                'settings': current_conversation_settings
+            })
+        else:
+            return jsonify({'error': 'Failed to update conversation'}), 500
+            
+    except Exception as e:
+        print(f"Error in update_conversation endpoint: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/listen-utterances')
 def listen_utterances():
-    # Get conversation settings from query parameters
+    # Get conversation settings from query parameters and update global settings
     print(f"DEBUG: Received request with query parameters: {request.args}")
-    topic = request.args.get('topic', 'restaurant')
-    source_lang = request.args.get('source_lang', 'english')
-    target_lang = request.args.get('target_lang', 'spanish')
+    global current_conversation_settings
+    current_conversation_settings.update({
+        'topic': request.args.get('topic', current_conversation_settings['topic']),
+        'source_lang': request.args.get('source_lang', current_conversation_settings['source_lang']),
+        'target_lang': request.args.get('target_lang', current_conversation_settings['target_lang'])
+    })
 
     # Map topic values to full descriptions
     topic_descriptions = {
@@ -178,7 +228,7 @@ def listen_utterances():
         'shopping': 'Shopping for clothes'
     }
     
-    topic_description = topic_descriptions.get(topic, topic_descriptions['restaurant'])
+    topic_description = topic_descriptions.get(current_conversation_settings['topic'], topic_descriptions['restaurant'])
 
     def event_stream():
         while True:
@@ -191,19 +241,32 @@ def listen_utterances():
                     print("DEBUG: Received None utterance, breaking stream")
                     break
                 
-                utterance_translation = get_claude_response_translation_alone(utterance, source_lang, target_lang)
+                # Use current settings for translation
+                utterance_translation = get_claude_response_translation_alone(
+                    utterance, 
+                    current_conversation_settings['source_lang'],
+                    current_conversation_settings['target_lang']
+                )
+                
                 # First, send the user's utterance
                 user_message = {
                     "type": "user_utterance",
                     "text": utterance,
-                    "spanish_text": utterance,
-                    "english_text": utterance_translation["English"] if utterance_translation else utterance
+                    "spanish_text": utterance,  # This will be the original text
+                    "english_text": utterance_translation["English"] if utterance_translation else utterance,
+                    "source_lang": current_conversation_settings['source_lang'],
+                    "target_lang": current_conversation_settings['target_lang']
                 }
                 yield f"data: {json.dumps(user_message)}\n\n"
                 print(f"DEBUG: User message yielded: {user_message}")
 
-                # Get Claude's response
-                claude_response = get_claude_response(utterance, topic_description, source_lang, target_lang)
+                # Get Claude's response using current settings
+                claude_response = get_claude_response(
+                    utterance, 
+                    topic_description,
+                    current_conversation_settings['source_lang'],
+                    current_conversation_settings['target_lang']
+                )
                 print(f"DEBUG: Raw Claude response: {claude_response}")
                 
                 if claude_response is not None:
@@ -213,7 +276,9 @@ def listen_utterances():
                             "type": "ai_response",
                             "text": claude_response["Spanish"],  # For backwards compatibility
                             "spanish_text": claude_response["Spanish"],
-                            "english_text": claude_response["English"]
+                            "english_text": claude_response["English"],
+                            "source_lang": current_conversation_settings['source_lang'],
+                            "target_lang": current_conversation_settings['target_lang']
                         }
                     else:
                         # Handle plain text response
@@ -221,7 +286,9 @@ def listen_utterances():
                             "type": "ai_response",
                             "text": str(claude_response),
                             "spanish_text": str(claude_response),
-                            "english_text": "Translation not available"
+                            "english_text": "Translation not available",
+                            "source_lang": current_conversation_settings['source_lang'],
+                            "target_lang": current_conversation_settings['target_lang']
                         }
                     
                     print(f"DEBUG: Formatted AI message: {ai_message}")
@@ -281,51 +348,6 @@ class RoomHandler(EventHandler):
             gpu_joined = True
             warm_boot_time = time.time()
 
-def clean_math_text(text):
-    """
-    Remove LaTeX formatting and special symbols from mathematical text
-    
-    Args:
-        text (str): Text containing LaTeX math symbols
-        
-    Returns:
-        str: Cleaned text with special symbols replaced or removed
-    """
-    # Remove dollar sign delimiters (LaTeX math mode)
-    text = re.sub(r'\$', '', text)
-    
-    # Replace LaTeX symbols with plain text equivalents
-    replacements = {
-        r'\\div': '/',           # Division symbol
-        r'\\cdot': '*',          # Multiplication dot
-        r'\\times': '*',         # Multiplication x
-        r'\\frac{([^}]+)}{([^}]+)}': r'\1/\2',  # Fractions like \frac{a}{b} to a/b
-        r'\\sqrt{([^}]+)}': r'sqrt(\1)',        # Square root
-        r'\\sqrt\[([^]]+)\]{([^}]+)}': r'\1-root(\2)',  # nth root
-        r'\\left\(': '(',        # Left parenthesis
-        r'\\right\)': ')',       # Right parenthesis
-        r'\\left\[': '[',        # Left bracket
-        r'\\right\]': ']',       # Right bracket
-        r'\\infty': 'infinity',  # Infinity symbol
-        r'\\pi': 'pi',           # Pi symbol
-        r'\\approx': '≈',        # Approximately equal
-        r'\\neq': '≠',           # Not equal
-        r'\\leq': '≤',           # Less than or equal
-        r'\\geq': '≥',           # Greater than or equal
-        r'\\boxed{([^}]+)}': r'\1'  # Remove boxed content formatting
-    }
-    
-    for pattern, replacement in replacements.items():
-        text = re.sub(pattern, replacement, text)
-    
-    # Process superscripts (^) for powers
-    text = re.sub(r'(\w+)\^(\w+)', r'\1^\2', text)  # Preserve powers for clarity
-    
-    # Remove any remaining LaTeX commands
-    text = re.sub(r'\\[a-zA-Z]+', '', text)
-    
-    return text
-
 # def call_deepseek_llm(question):
 #     parse_question = question.split("=")[0].strip()
 #     messages = [
@@ -376,43 +398,6 @@ def join_room(call_client: CallClient, url: str, conversation_id: str):
         raise
 
 
-def play_audio(virtual_mic: VirtualMicrophoneDevice, audio_path: str):
-    try:
-        # Verify file exists and is readable
-        if not os.path.exists(audio_path):
-            raise FileNotFoundError(f"Audio file not found: {audio_path}")
-
-        with wave.open(audio_path, "rb") as wave_file:
-            # Verify audio format
-            if wave_file.getsampwidth() != 2:  # 16-bit = 2 bytes
-                raise ValueError("Audio must be 16-bit PCM")
-            if wave_file.getnchannels() != virtual_mic.channels:
-                raise ValueError(f"Audio must have {virtual_mic.channels} channels")
-
-            # Read the actual frames
-            audio_frames = wave_file.readframes(wave_file.getnframes())
-
-            # Write frames and wait for completion
-            frames_written = virtual_mic.write_frames(
-                audio_frames,
-                None,
-                # lambda x: print(
-                #     f"WROTE FRAMES: {x} (Expected: {len(audio_frames) // 2})"
-                # ),
-            )
-
-            # Since we're using non-blocking mode, add a small delay
-            time.sleep(0.1)
-
-            if frames_written == 0:
-                raise ValueError(f"No frames were written to virtual microphone")
-
-            print(f"Played audio: {audio_path} ({frames_written} frames)")
-    except Exception as e:
-        print(f"Error playing audio: {e}")
-        raise
-
-
 def send_text_echo(
     call_client: CallClient,
     conversation_id: str,
@@ -426,30 +411,6 @@ def send_text_echo(
             "properties": {"text": text},
         }
     )
-
-
-def send_audio_echo(
-    call_client: CallClient, conversation_id: str, audio_path: str = "test_audio.wav"
-):
-    try:
-        with open(audio_path, "rb") as audio_file:
-            audio_bytes = audio_file.read()
-            call_client.send_app_message(
-                {
-                    "message_type": "conversation",
-                    "event_type": "conversation.echo",
-                    "conversation_id": conversation_id,
-                    "properties": {
-                        "modality": "audio",
-                        "audio": audio_bytes,
-                        "done": True,
-                    },
-                }
-            )
-            print(f"Played audio: {audio_path}")
-    except Exception as e:
-        print(f"Error playing audio: {e}")
-        raise
 
 
 def get_meeting_token(
@@ -508,13 +469,55 @@ def run_heartbeat(conversation_url: str, conversation_id: str):
         time.sleep(1)
 
 
+def handle_conversation_change(new_url: str) -> bool:
+    """
+    Handle switching to a new conversation room.
+    Args:
+        new_url: The URL of the new conversation room
+    Returns:
+        bool: True if switch was successful, False otherwise
+    """
+    global client_global, conversation_id_global, conversation_url_global
+    
+    try:
+        # Extract conversation ID from URL
+        conversation_id = new_url.split('/')[-1]
+        
+        # If we already have a client and are in a room, leave it
+        if client_global and conversation_url_global:
+            try:
+                client_global.leave()
+                print(f"Left room: {conversation_url_global}")
+            except Exception as e:
+                print(f"Error leaving room: {e}")
+        
+        # Initialize new client if needed
+        if not client_global:
+            client_global = init_daily_client()
+            print("Initialized new Daily client")
+        
+        # Update globals
+        conversation_id_global = conversation_id
+        conversation_url_global = new_url
+        
+        # Join new room
+        join_room(client_global, new_url, conversation_id)
+        print(f"Successfully joined new room: {new_url}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error in handle_conversation_change: {e}")
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--conversation_id", type=str, required=True, help="Conversation ID"
+        "--conversation_id", type=str, help="Initial conversation ID (optional)"
     )
     parser.add_argument(
-        "--conversation_url", type=str, required=True, help="Conversation URL"
+        "--conversation_url", type=str, help="Initial conversation URL (optional)"
     )
     args = parser.parse_args()
 
@@ -526,7 +529,18 @@ def main():
     print("Flask SSE server started on port 5001")
     # --- End SSE Additions ---
 
-    run_heartbeat(args.conversation_url, args.conversation_id)
+    if args.conversation_url and args.conversation_id:
+        # If initial conversation details provided, join that room
+        success = handle_conversation_change(args.conversation_url)
+        if not success:
+            print("Failed to join initial conversation room")
+            return
+    else:
+        print("Waiting for first conversation to be created via frontend...")
+    
+    # Keep main thread alive
+    while True:
+        time.sleep(1)
 
 
 if __name__ == "__main__":

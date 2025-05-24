@@ -241,16 +241,16 @@
             <div class="settings-group">
                 <label for="source-lang">Source Language</label>
                 <select id="source-lang">
-                    <option value="english">English</option>
                     <option value="spanish">Spanish</option>
+                    <option value="english">English</option>
                     <option value="french">French</option>
                 </select>
             </div>
             <div class="settings-group">
                 <label for="target-lang">Translation Language</label>
                 <select id="target-lang">
-                    <option value="english">English</option>
-                    <option value="spanish" selected>Spanish</option>
+                    <option value="english" selected>English</option>
+                    <option value="spanish">Spanish</option>
                     <option value="french">French</option>
                 </select>
             </div>
@@ -436,13 +436,13 @@
 
             try {
                 // Create new conversation based on target language and topic
-                const response = await fetch('http://localhost:5001/create-conversation', {
+                const response = await fetch('http://localhost:5002/create-conversation', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        language: currentSettings.targetLang,
+                        language: currentSettings.sourceLang,
                         topic: currentSettings.topic
                     })
                 });
@@ -467,7 +467,7 @@
                     settingsPane.dataset.sourceLang = currentSettings.sourceLang;
                     settingsPane.dataset.targetLang = currentSettings.targetLang;
 
-                    // Notify the backend about the new conversation
+                    // Notify the backend about the new conversation and settings
                     try {
                         const updateResponse = await fetch('http://localhost:5001/update-conversation', {
                             method: 'POST',
@@ -475,7 +475,10 @@
                                 'Content-Type': 'application/json'
                             },
                             body: JSON.stringify({
-                                conversation_url: data.conversation_url
+                                conversation_url: data.conversation_url,
+                                source_lang: currentSettings.sourceLang,
+                                target_lang: currentSettings.targetLang,
+                                topic: currentSettings.topic
                             })
                         });
 
@@ -483,7 +486,8 @@
                             throw new Error('Failed to update backend conversation');
                         }
 
-                        console.log("Backend conversation updated successfully");
+                        const updateData = await updateResponse.json();
+                        console.log("Backend conversation updated successfully:", updateData);
                     } catch (error) {
                         console.error("Error updating backend conversation:", error);
                         statusMessage.textContent = 'Error connecting to conversation. Please try again.';
