@@ -69,7 +69,7 @@ def get_claude_response_translation_alone(utterance: str, source_lang: str, targ
             max_tokens=1024,
             temperature=0.7,
             system=f"Act as a language tutor whose job is to translate from {source_lang} to {target_lang}. " \
-                   f"Keep your responses short and concise. " \
+                   f"Keep your responses short and concise. Don't make it more than 2 sentences." \
                    f"You must use the tool 'generate_response' to generate the translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
             messages=[
                 {"role": "user", "content": utterance}
@@ -125,7 +125,7 @@ def get_claude_response(utterance: str, topic: str, source_lang: str, target_lan
             temperature=0.7,
             system=f"Act as a {source_lang} language tutor. Engage in a conversation with me, correcting my grammar and vocabulary as needed. " \
                    f"Respond to my messages in {source_lang}, and provide {target_lang} translations when necessary to help me understand. Our conversation topic is {topic}. " \
-                   f"Keep your responses short and concise. " \
+                   f"Keep your responses short and concise. Don't make it more than 2 sentences." \
                    f"You must use the tool 'generate_response' to generate a response in {source_lang} with a {target_lang} translation. Whenever you are responding dont use any thinking or reasoning, just respond with the tool call.",
             messages=[
                 {"role": "user", "content": utterance}
