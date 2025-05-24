@@ -16,6 +16,7 @@ from flask_cors import CORS
 from queue import Queue
 from threading import Thread
 from anthropic import Anthropic
+import sys
 
 # # model_name = "deepseek-ai/deepseek-math-7b-instruct"
 # model_name = "/home/ubuntu/karthik-ragunath-ananda-kumar-utah/deepseek-checkpoints/deepseek-math-7b-rl"
@@ -53,10 +54,20 @@ current_conversation_settings = {
     'topic': 'restaurant'
 }
 
+# Add topic descriptions as a global constant
+TOPIC_DESCRIPTIONS = {
+    'restaurant': 'Ordering food at a restaurant',
+    'travel': 'Booking a hotel room',
+    'shopping': 'Shopping for clothes'
+}
+
 # Global variables for Daily client and conversation info
 client_global = None
 conversation_id_global = None
 conversation_url_global = None
+
+def get_topic_description():
+    return TOPIC_DESCRIPTIONS.get(current_conversation_settings['topic'], TOPIC_DESCRIPTIONS['restaurant'])
 
 def get_claude_response_translation_alone(utterance: str, source_lang: str, target_lang: str) -> str:
     """Get a response from Claude for the given utterance."""
@@ -210,31 +221,12 @@ def update_conversation():
         print(f"Error in update_conversation endpoint: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/listen-utterances')
-def listen_utterances():
-    # Get conversation settings from query parameters and update global settings
-    print(f"DEBUG: Received request with query parameters: {request.args}")
-    global current_conversation_settings
-    current_conversation_settings.update({
-        'topic': request.args.get('topic', current_conversation_settings['topic']),
-        'source_lang': request.args.get('source_lang', current_conversation_settings['source_lang']),
-        'target_lang': request.args.get('target_lang', current_conversation_settings['target_lang'])
-    })
-
-    # Map topic values to full descriptions
-    topic_descriptions = {
-        'restaurant': 'Ordering food at a restaurant',
-        'travel': 'Booking a hotel room',
-        'shopping': 'Shopping for clothes'
-    }
-    
-    topic_description = topic_descriptions.get(current_conversation_settings['topic'], topic_descriptions['restaurant'])
-
-    def event_stream():
-        while True:
-            try:
-                # Wait for a new utterance from the queue
-                utterance = utterance_queue.get()
+def event_stream():
+    while True:
+        try:
+            # Check queue size instead of length
+            if not utterance_queue.empty():
+                utterance = utterance_queue.get_nowait()  # Non-blocking get
                 print(f"DEBUG: Got utterance from queue: {utterance}")
                 
                 if utterance is None or utterance == "":  # Allow graceful shutdown if needed
@@ -257,13 +249,17 @@ def listen_utterances():
                     "source_lang": current_conversation_settings['source_lang'],
                     "target_lang": current_conversation_settings['target_lang']
                 }
-                yield f"data: {json.dumps(user_message)}\n\n"
-                print(f"DEBUG: User message yielded: {user_message}")
+                data = f"data: {json.dumps(user_message)}\n\n"
+                yield data
+                # Force flush after each event
+                if hasattr(sys.stdout, 'flush'):
+                    sys.stdout.flush()
 
                 # Get Claude's response using current settings
+                current_topic_description = get_topic_description()  # Get current topic description
                 claude_response = get_claude_response(
                     utterance, 
-                    topic_description,
+                    current_topic_description,
                     current_conversation_settings['source_lang'],
                     current_conversation_settings['target_lang']
                 )
@@ -292,23 +288,47 @@ def listen_utterances():
                         }
                     
                     print(f"DEBUG: Formatted AI message: {ai_message}")
-                    yield f"data: {json.dumps(ai_message)}\n\n"
+                    data = f"data: {json.dumps(ai_message)}\n\n"
+                    yield data
+                    # Force flush after each event
+                    if hasattr(sys.stdout, 'flush'):
+                        sys.stdout.flush()
                     print("DEBUG: AI response yielded successfully")
                 else:
                     print("DEBUG: Claude response is None, skipping")
                 
                 utterance_queue.task_done()
-            except Exception as e:
-                print(f"ERROR in event_stream: {str(e)}")
-                continue
-    
+            else:
+                # Short sleep to prevent CPU spinning
+                time.sleep(0.1)  # Wait between checks
+        except Exception as e:
+            print(f"Error in event stream: {e}")
+            # Don't break the stream on error, continue processing
+            time.sleep(0.1)
+            continue
+
+@app.route('/listen-utterances')
+def listen_utterances():
+    # Get conversation settings from query parameters and update global settings
+    print(f"DEBUG: Received request with query parameters: {request.args}")
+    global current_conversation_settings
+    current_conversation_settings.update({
+        'topic': request.args.get('topic', current_conversation_settings['topic']),
+        'source_lang': request.args.get('source_lang', current_conversation_settings['source_lang']),
+        'target_lang': request.args.get('target_lang', current_conversation_settings['target_lang'])
+    })
+
     return Response(
         stream_with_context(event_stream()),
         mimetype='text/event-stream',
         headers={
-            'Cache-Control': 'no-cache',
+            'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no'
+            'X-Accel-Buffering': 'no',
+            'Content-Encoding': 'none',
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Transfer-Encoding': 'chunked'
         }
     )
 
