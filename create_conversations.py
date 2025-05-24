@@ -8,7 +8,7 @@ payload = {
     # "conversational_context": "You are about to talk to Hassaan, one of the cofounders of Tavus. He loves to talk about AI, startups, and racing cars.",
     "conversation_name": "A Meeting with Karthik",
     "conversational_context": "You are about to talk to Karthik, one of the researchers of Tavus. He loves to talk about AI, startups, and racing cars. Keep your responses short and concise.",
-    "custom_greeting": "Hey there Karthik, long time no see!",
+    "custom_greeting": "Hola",
     "properties": {
         "language": "spanish"
     }
