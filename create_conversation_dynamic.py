@@ -48,7 +48,7 @@ def create_conversation(language, topic, output_file):
     payload = {
         "replica_id": "rb17cf590e15",
         "conversation_name": f"Language Learning - {language.capitalize()} - {topic.capitalize()}",
-        "conversational_context": f"You are a {language} language tutor helping someone learn about {topic_phrase}. Keep your responses short, friendly, and focused on the topic. Do not use more than 2 sentences.",
+        "conversational_context": f"You are a {language} language tutor helping someone learn about {topic_phrase}. The person is a beginner and you should speak at a 5th grade level. Keep your responses short, friendly, and focused on the topic. Do not use more than 2 sentences.",
         "custom_greeting": full_greeting,
         "properties": {
             "language": language.lower()
