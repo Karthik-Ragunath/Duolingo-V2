@@ -41,7 +41,7 @@ This made Claude return clear, concise, structured responses like:
 
 🖥️ Live Demo
 
-<add youtube link later>
+[YouTube Link](https://youtu.be/BfzSXjZbcsA)
 
 🌍 Use Cases
 
