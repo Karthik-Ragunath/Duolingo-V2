@@ -5,22 +5,19 @@ import time
 import wave
 from enum import Enum
 from typing import Any, Mapping, Optional
-
 import requests
 from dotenv import load_dotenv
-
 from daily import CallClient, Daily, EventHandler, VirtualMicrophoneDevice
-
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 import re
 
-# model_name = "deepseek-ai/deepseek-math-7b-instruct"
-model_name = "/home/ubuntu/karthik-ragunath-ananda-kumar-utah/deepseek-checkpoints/deepseek-math-7b-rl"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")
-model.generation_config = GenerationConfig.from_pretrained(model_name)
-model.generation_config.pad_token_id = model.generation_config.eos_token_id
+# # model_name = "deepseek-ai/deepseek-math-7b-instruct"
+# model_name = "/home/ubuntu/karthik-ragunath-ananda-kumar-utah/deepseek-checkpoints/deepseek-math-7b-rl"
+# tokenizer = AutoTokenizer.from_pretrained(model_name)
+# model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.bfloat16, device_map="auto")
+# model.generation_config = GenerationConfig.from_pretrained(model_name)
+# model.generation_config.pad_token_id = model.generation_config.eos_token_id
 
 load_dotenv()
 
@@ -56,37 +53,37 @@ class RoomHandler(EventHandler):
             print(f"Error parsing message: {e}")
         if json_message["event_type"] == "conversation.utterance":
             print(f"Utterance: {json_message['properties']['speech']}")
-        if json_message["event_type"] == "conversation.perception_tool_call":
-            print(f"Perception tool call: {json_message.keys()}")
-            print("Property Keys: ", json_message["properties"].keys())
-            print("Arguments: ", json_message["properties"]["arguments"])
-            print("Name: ", json_message["properties"]["name"])
-            if json_message["properties"]["name"] == "notify_if_math_problem_found":
-                question = json_message["properties"]["arguments"]["question"]
-                parsed_question = question.split("=")[0].strip()
-                if parsed_question not in questions_seen:
-                    questions_seen[parsed_question] = True
-                    send_text_echo(
-                        client_global,
-                        conversation_id_global,
-                        "oh interesting problem, let me think about it for a moment",
-                    )
-                    time.sleep(3)
-                    result = call_deepseek_llm(parsed_question)
-                    # 5-10s of thinking
-                    send_text_echo(
-                        client_global,
-                        conversation_id_global,
-                        f"i think i got it, here's how i got to the answer: {result}",
-                    )
-            elif json_message["properties"]["name"] == "notify_if_cat_seen":
-                send_text_echo(
-                    client_global, conversation_id_global, "oh no a cat! i'm scared"
-                )
-            elif json_message["properties"]["name"] == "notify_if_dog_seen":
-                send_text_echo(
-                    client_global, conversation_id_global, "oh no a dog! i'm scared"
-                )
+        # if json_message["event_type"] == "conversation.perception_tool_call":
+        #     print(f"Perception tool call: {json_message.keys()}")
+        #     print("Property Keys: ", json_message["properties"].keys())
+        #     print("Arguments: ", json_message["properties"]["arguments"])
+        #     print("Name: ", json_message["properties"]["name"])
+        #     if json_message["properties"]["name"] == "notify_if_math_problem_found":
+        #         question = json_message["properties"]["arguments"]["question"]
+        #         parsed_question = question.split("=")[0].strip()
+        #         if parsed_question not in questions_seen:
+        #             questions_seen[parsed_question] = True
+        #             send_text_echo(
+        #                 client_global,
+        #                 conversation_id_global,
+        #                 "oh interesting problem, let me think about it for a moment",
+        #             )
+        #             time.sleep(3)
+        #             result = call_deepseek_llm(parsed_question)
+        #             # 5-10s of thinking
+        #             send_text_echo(
+        #                 client_global,
+        #                 conversation_id_global,
+        #                 f"i think i got it, here's how i got to the answer: {result}",
+        #             )
+        #     elif json_message["properties"]["name"] == "notify_if_cat_seen":
+        #         send_text_echo(
+        #             client_global, conversation_id_global, "oh no a cat! i'm scared"
+        #         )
+        #     elif json_message["properties"]["name"] == "notify_if_dog_seen":
+        #         send_text_echo(
+        #             client_global, conversation_id_global, "oh no a dog! i'm scared"
+        #         )
         elif (
             json_message["event_type"] == "conversation.utterance"
             and json_message["properties"]["role"] == "replica"
@@ -144,18 +141,18 @@ def clean_math_text(text):
     
     return text
 
-def call_deepseek_llm(question):
-    parse_question = question.split("=")[0].strip()
-    messages = [
-        {"role": "user", "content": f"what is {parse_question}, solve this problem and put your final answer within " + "\\boxed{}"}
-    ]
-    input_tensor = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt")
-    outputs = model.generate(input_tensor.to(model.device), max_new_tokens=100)
+# def call_deepseek_llm(question):
+#     parse_question = question.split("=")[0].strip()
+#     messages = [
+#         {"role": "user", "content": f"what is {parse_question}, solve this problem and put your final answer within " + "\\boxed{}"}
+#     ]
+#     input_tensor = tokenizer.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt")
+#     outputs = model.generate(input_tensor.to(model.device), max_new_tokens=100)
 
-    result = tokenizer.decode(outputs[0][input_tensor.shape[1]:], skip_special_tokens=True)
-    cleaned_result = clean_math_text(result)
-    print(cleaned_result)
-    return cleaned_result
+#     result = tokenizer.decode(outputs[0][input_tensor.shape[1]:], skip_special_tokens=True)
+#     cleaned_result = clean_math_text(result)
+#     print(cleaned_result)
+#     return cleaned_result
 
 
 def call_joined(join_data: Optional[Mapping[str, Any]], client_error: Optional[str]):
