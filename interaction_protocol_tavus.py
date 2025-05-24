@@ -61,7 +61,8 @@ def get_claude_response(utterance: str) -> str:
         return message.content[0].text
     except Exception as e:
         print(f"Error getting Claude response: {e}")
-        return f"I apologize, but I encountered an error processing your message: {str(e)}"
+        # return f"I apologize, but I encountered an error processing your message: {str(e)}"
+        return None
 
 @app.route('/listen-utterances')
 def listen_utterances():
@@ -72,7 +73,7 @@ def listen_utterances():
                 utterance = utterance_queue.get()
                 print(f"DEBUG: Got utterance from queue: {utterance}")
                 
-                if utterance is None:  # Allow graceful shutdown if needed
+                if utterance is None or utterance == "":  # Allow graceful shutdown if needed
                     print("DEBUG: Received None utterance, breaking stream")
                     break
                 
@@ -86,6 +87,9 @@ def listen_utterances():
 
                 # Get Claude's response
                 claude_response = get_claude_response(utterance)
+                if claude_response is None:
+                    print("DEBUG: Claude response is None, skipping")
+                    continue
                 ai_message = {
                     "type": "ai_response",
                     "text": claude_response
