@@ -161,7 +161,7 @@ def get_claude_response(utterance: str, topic: str, source_lang: str, target_lan
             }]
         )
         
-        print(f"DEBUG: Claude response: {message}")
+        # print(f"DEBUG: Claude response: {message}")
         # Check if Claude used the tool
         if message.stop_reason == "tool_use":
             for content in message.content:
@@ -202,7 +202,7 @@ def update_conversation():
             'target_lang': data.get('target_lang', current_conversation_settings['target_lang']),
             'topic': data.get('topic', current_conversation_settings['topic'])
         })
-        print(f"DEBUG: Current conversation settings: {current_conversation_settings}")
+        # print(f"DEBUG: Current conversation settings: {current_conversation_settings}")
         if not new_url:
             return jsonify({'error': 'No conversation URL provided'}), 400
             
@@ -263,7 +263,7 @@ def event_stream():
                     current_conversation_settings['source_lang'],
                     current_conversation_settings['target_lang']
                 )
-                print(f"DEBUG: Raw Claude response: {claude_response}")
+                # print(f"DEBUG: Raw Claude response: {claude_response}")
                 
                 if claude_response is not None:
                     if isinstance(claude_response, dict) and "Spanish" in claude_response and "English" in claude_response:
@@ -287,7 +287,7 @@ def event_stream():
                             "target_lang": current_conversation_settings['target_lang']
                         }
                     
-                    print(f"DEBUG: Formatted AI message: {ai_message}")
+                    # print(f"DEBUG: Formatted AI message: {ai_message}")
                     data = f"data: {json.dumps(ai_message)}\n\n"
                     yield data
                     # Force flush after each event
@@ -310,7 +310,7 @@ def event_stream():
 @app.route('/listen-utterances')
 def listen_utterances():
     # Get conversation settings from query parameters and update global settings
-    print(f"DEBUG: Received request with query parameters: {request.args}")
+    # print(f"DEBUG: Received request with query parameters: {request.args}")
     global current_conversation_settings
     current_conversation_settings.update({
         'topic': request.args.get('topic', current_conversation_settings['topic']),
@@ -355,10 +355,10 @@ class RoomHandler(EventHandler):
         if json_message["event_type"] == "conversation.utterance":
             utterance_text = json_message['properties']['speech']
             role_text = json_message["properties"]["role"]
-            print(f"DEBUG: Received utterance - Text: {utterance_text}, Role: {role_text}")
+            # print(f"DEBUG: Received utterance - Text: {utterance_text}, Role: {role_text}")
             
             if role_text == "replica":  # Changed to capture non-replica speech
-                print(f"DEBUG: Queueing utterance from {role_text}")
+                # print(f"DEBUG: Queueing utterance from {role_text}")
                 utterance_queue.put(utterance_text)
                 print(f"DEBUG: Successfully queued utterance")
             else:
